@@ -1,6 +1,6 @@
 """
 SpeakUp — Auth Routes
-Handles: POST /auth/signup, POST /auth/login
+Handles: POST /auth/signup, POST /auth/login, GET /auth/verify
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -10,19 +10,11 @@ from schemas import SignupRequest, LoginRequest, TokenResponse
 from auth import hash_password, verify_password, create_access_token
 from email_utils import generate_token, send_verification_email
 
-
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
 @router.post("/signup", response_model=TokenResponse, status_code=201)
 def signup(data: SignupRequest, db: Session = Depends(get_db)):
-    """
-    Create a new user account.
-    - Checks email isn't already taken
-    - Hashes the password safely
-    - Creates default settings and streak record
-    - Returns a JWT token so the user is immediately logged in
-    """
     # Check if email already exists
     existing = db.query(User).filter(User.email == data.email).first()
     if existing:
@@ -37,32 +29,30 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
         email=data.email,
         password_hash=hash_password(data.password),
         level=data.level or "beginner",
-        goal=data.goal or "Build general confidence"
+        goal=data.goal or "Build general confidence",
+        is_verified=False
     )
     db.add(user)
-    db.flush()  # flush to get the user.id before commit
+    db.flush()
 
-    # Create default settings for the new user
-    settings = UserSettings(user_id=user.id)
-    db.add(settings)
+    # Create default settings and streak
+    db.add(UserSettings(user_id=user.id))
+    db.add(Streak(user_id=user.id, current_streak=0, longest_streak=0))
 
-    # Create a streak record starting at 0
-    streak = Streak(user_id=user.id, current_streak=0, longest_streak=0)
-    db.add(streak)
-
-    token = generate_token()
-    user.verify_token = token
-    user.is_verified = False
+    # Generate email verification token
+    verify_token = generate_token()
+    user.verify_token = verify_token
 
     db.commit()
-    send_verification_email(data.email, data.name, token)
-
     db.refresh(user)
 
-    # Create and return a token
-    token = create_access_token(user.id, user.email)
+    # Send verification email (non-blocking — if it fails, signup still works)
+    send_verification_email(data.email, data.name, verify_token)
+
+    # Return JWT so user is logged in immediately
+    access_token = create_access_token(user.id, user.email)
     return TokenResponse(
-        access_token=token,
+        access_token=access_token,
         user={
             "id": user.id,
             "name": user.name,
@@ -74,12 +64,6 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=TokenResponse)
 def login(data: LoginRequest, db: Session = Depends(get_db)):
-    """
-    Log in with email and password.
-    - Finds the user by email
-    - Verifies the password against the stored hash
-    - Returns a JWT token on success
-    """
     user = db.query(User).filter(User.email == data.email).first()
 
     if not user or not verify_password(data.password, user.password_hash):
@@ -104,14 +88,21 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
             "level": user.level
         }
     )
-    @router.get("/verify")
- def verify_email(token: str, db: Session = Depends(get_db)):
+
+
+@router.get("/verify")
+def verify_email(token: str, db: Session = Depends(get_db)):
     """Called when user clicks the link in their email."""
     user = db.query(User).filter(User.verify_token == token).first()
+
     if not user:
-        raise HTTPException(status_code=400, detail="Invalid or expired verification link.")
-    
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid or expired verification link."
+        )
+
     user.is_verified = True
     user.verify_token = None
     db.commit()
+
     return {"message": "Email verified successfully! You can now log in."}
