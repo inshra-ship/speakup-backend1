@@ -105,7 +105,7 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
         }
     )
     @router.get("/verify")
-def verify_email(token: str, db: Session = Depends(get_db)):
+ def verify_email(token: str, db: Session = Depends(get_db)):
     """Called when user clicks the link in their email."""
     user = db.query(User).filter(User.verify_token == token).first()
     if not user:
