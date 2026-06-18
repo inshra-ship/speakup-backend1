@@ -51,8 +51,8 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
     db.add(streak)
 
     token = generate_token()
-   user.verify_token = token
-   user.is_verified = False
+    user.verify_token = token
+    user.is_verified = False
 
     db.commit()
     send_verification_email(data.email, data.name, token)
