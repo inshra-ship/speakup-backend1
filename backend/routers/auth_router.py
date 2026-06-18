@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 from database import get_db, User, UserSettings, Streak
 from schemas import SignupRequest, LoginRequest, TokenResponse
 from auth import hash_password, verify_password, create_access_token
+from email_utils import generate_token, send_verification_email
+
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -48,7 +50,13 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
     streak = Streak(user_id=user.id, current_streak=0, longest_streak=0)
     db.add(streak)
 
+    token = generate_token()
+   user.verify_token = token
+   user.is_verified = False
+
     db.commit()
+    send_verification_email(data.email, data.name, token)
+
     db.refresh(user)
 
     # Create and return a token
@@ -96,3 +104,14 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
             "level": user.level
         }
     )
+    @router.get("/verify")
+def verify_email(token: str, db: Session = Depends(get_db)):
+    """Called when user clicks the link in their email."""
+    user = db.query(User).filter(User.verify_token == token).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid or expired verification link.")
+    
+    user.is_verified = True
+    user.verify_token = None
+    db.commit()
+    return {"message": "Email verified successfully! You can now log in."}
