@@ -24,6 +24,8 @@ Base = declarative_base()
 class User(Base):
     __tablename__ = "users"
 
+    is_verified     = Column(Boolean, default=False)
+    verify_token    = Column(String(200), nullable=True)
     id            = Column(Integer, primary_key=True, index=True)
     name          = Column(String(100), nullable=False)
     email         = Column(String(200), unique=True, index=True, nullable=False)
