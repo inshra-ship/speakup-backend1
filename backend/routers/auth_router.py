@@ -47,7 +47,10 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
     db.refresh(user)
 
     # Send verification email (non-blocking — if it fails, signup still works)
+    try:
     send_verification_email(data.email, data.name, verify_token)
+    except Exception as e:
+    print(f"Email failed (non-critical): {e}")
 
     # Return JWT so user is logged in immediately
     access_token = create_access_token(user.id, user.email)
