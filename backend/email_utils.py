@@ -62,11 +62,11 @@ def send_verification_email(to_email: str, name: str, token: str):
     # Send via Gmail SMTP
     try:
         with smtplib.SMTP("smtp.gmail.com", 587) as server:
-    server.ehlo()
-    server.starttls()
+         server.ehlo()
+        server.starttls()
     server.login(GMAIL_USER, GMAIL_PASS)
     server.sendmail(GMAIL_USER, to_email, msg.as_string())
-        return True
+    return True
     except Exception as e:
-        print(f"Email send failed: {e}")
-        return False
+    print(f"Email send failed: {e}")
+    return False
